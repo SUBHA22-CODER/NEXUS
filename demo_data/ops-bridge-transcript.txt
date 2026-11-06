@@ -1,0 +1,11 @@
+Meeting: Ops bridge - checkout degradation
+Date: 2026-11-06
+[09:40] Priya Nair: Payments have been throwing 500s since about 09:12 and orders are queueing behind them.
+[09:41] Tom Becker: I can see pool exhausted errors starting right after this morning's deploy of payment-service.
+[09:42] Priya Nair: We decided to treat a rollback of payment-service as the first recovery option.
+[09:43] Aisha Rahman: Separate problem. Northwind Components told us the shipment for SKU-1042 is delayed by five days.
+[09:44] Aisha Rahman: I will get a quote from Harbor Supply by 14:00 today.
+[09:45] Tom Becker: Someone needs to own the payment-service recovery runbook, I can't take it on today.
+[09:46] Priya Nair: Understood, we need an owner for that by noon.
+[09:47] Priya Nair: Tom will confirm the pool settings with the database team by tomorrow.
+[09:48] Aisha Rahman: The SKU-2210 dock shipment is not delayed, that one is still on schedule.

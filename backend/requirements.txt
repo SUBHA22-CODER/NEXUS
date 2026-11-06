@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn>=0.30
+sqlalchemy>=2.0.36
+pydantic>=2.9
+pydantic-settings>=2.5
+email-validator>=2.2
+langgraph>=0.2.60
+openai>=1.50
+pyjwt>=2.9
+python-multipart>=0.0.12
+prometheus-client>=0.21
+psycopg[binary]>=3.2

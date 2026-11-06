@@ -1,0 +1,3 @@
+task_id,title,owner,status,deadline,service
+ENG-412,Recover payment-service checkout path,,open,2026-11-06,payment-service
+OPS-208,Weekly stock count for warehouse B,Dana Osei,open,2026-11-08,

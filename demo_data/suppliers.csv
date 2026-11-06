@@ -1,0 +1,6 @@
+supplier_id,name,sku,lead_time_days,unit_cost,min_order,capacity,reliability
+SUP-NW,Northwind Components,SKU-1042,5,48.00,50,500,0.93
+SUP-HB,Harbor Supply,SKU-1042,1,61.00,25,200,0.96
+SUP-QL,Quayline Parts,SKU-1042,3,52.00,20,150,0.91
+SUP-NW,Northwind Components,SKU-2210,6,74.00,20,300,0.93
+SUP-QL,Quayline Parts,SKU-3105,4,21.00,40,400,0.91

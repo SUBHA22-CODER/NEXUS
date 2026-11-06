@@ -1,0 +1,6 @@
+2026-11-06T11:02:10Z INFO deploy-bot deploy service=payment-service version=v2.13.4 previous_version=v2.14.0 change="rollback"
+2026-11-06T11:03:44Z INFO payment-service POST /v1/charge status=200 latency_ms=92
+2026-11-06T11:05:12Z INFO payment-service POST /v1/charge status=200 latency_ms=87
+2026-11-06T11:06:31Z INFO order-service order accepted status=200 order_id=88203 sku=SKU-1042
+2026-11-06T11:09:02Z INFO payment-service POST /v1/charge status=200 latency_ms=85
+2026-11-06T11:11:20Z INFO inventory-sync sync completed lag_minutes=2

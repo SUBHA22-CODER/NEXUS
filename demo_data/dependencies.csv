@@ -1,0 +1,6 @@
+source,target,relation,source_domain,target_domain
+payment-service,order-service,payment authorisation,infrastructure,infrastructure
+order-service,inventory-sync,order confirmations,infrastructure,infrastructure
+inventory-sync,SKU-1042,stock count updates,infrastructure,supply
+inventory-sync,SKU-2210,stock count updates,infrastructure,supply
+inventory-sync,SKU-3105,stock count updates,infrastructure,supply

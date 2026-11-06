@@ -1,0 +1,2 @@
+sku,name,on_hand,daily_demand,safety_stock,supplier_id,inbound_eta_days,unit_price,as_of
+SKU-1042,Atlas Wireless Headset,50,10,0,SUP-NW,5,89.00,2026-11-07T10:00:00Z

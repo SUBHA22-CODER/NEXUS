@@ -1,0 +1,27 @@
+2026-11-06T09:00:04Z INFO payment-service POST /v1/charge status=200 latency_ms=84
+2026-11-06T09:02:11Z INFO payment-service POST /v1/charge status=200 latency_ms=91
+2026-11-06T09:05:32Z INFO order-service order accepted status=200 order_id=88121 sku=SKU-1042
+2026-11-06T09:07:47Z INFO payment-service POST /v1/charge status=200 latency_ms=88
+2026-11-06T09:08:30Z INFO inventory-sync sync completed lag_minutes=1
+2026-11-06T09:10:12Z INFO deploy-bot deploy service=payment-service version=v2.14.0 previous_version=v2.13.4 change="db pool size 50 to 10"
+2026-11-06T09:11:02Z INFO payment-service POST /v1/charge status=200 latency_ms=240
+2026-11-06T09:12:09Z WARN payment-service db pool saturation pool_in_use=9 pool_size=10
+2026-11-06T09:12:41Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:13:03Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:13:28Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:13:51Z INFO payment-service POST /v1/charge status=200 latency_ms=1890
+2026-11-06T09:14:17Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:14:39Z ERROR order-service payment call failed status=502 error="upstream payment-service returned 500" order_id=88144
+2026-11-06T09:15:02Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:15:44Z ERROR order-service payment call failed status=502 error="upstream payment-service returned 500" order_id=88147
+2026-11-06T09:16:20Z WARN order-service order backlog growing queue_depth=18 sku=SKU-1042 units_pending=3
+2026-11-06T09:17:05Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:18:33Z ERROR order-service payment call failed status=502 error="upstream payment-service returned 500" order_id=88152
+2026-11-06T09:21:10Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:24:48Z WARN inventory-sync sync delayed waiting on order-service lag_minutes=16
+2026-11-06T09:27:15Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:29:51Z ERROR order-service payment call failed status=502 error="upstream payment-service returned 500" order_id=88171
+2026-11-06T09:31:26Z WARN order-service order backlog growing queue_depth=31 sku=SKU-1042 units_pending=6
+2026-11-06T09:33:40Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10
+2026-11-06T09:38:02Z WARN inventory-sync sync delayed waiting on order-service lag_minutes=30
+2026-11-06T09:39:18Z ERROR payment-service POST /v1/charge status=500 error="connection pool exhausted" pool_in_use=10 pool_size=10

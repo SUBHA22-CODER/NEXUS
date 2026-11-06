@@ -1,0 +1,4 @@
+sku,name,on_hand,daily_demand,safety_stock,supplier_id,inbound_eta_days,unit_price,as_of
+SKU-1042,Atlas Wireless Headset,15,10,0,SUP-NW,0,89.00,2026-11-06T09:00:00Z
+SKU-2210,Atlas USB-C Dock,240,12,20,SUP-NW,6,129.00,2026-11-06T09:00:00Z
+SKU-3105,Atlas Laptop Stand,180,9,10,SUP-QL,4,45.00,2026-11-06T09:00:00Z
