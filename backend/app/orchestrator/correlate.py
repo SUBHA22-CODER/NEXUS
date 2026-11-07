@@ -101,6 +101,48 @@ def correlate(state: dict) -> dict:
                 )
             )
 
+    # Security / finance / manufacturing assessments become within-domain hypotheses.
+    # The only cross-domain link is evidence-based: a failing infrastructure service
+    # that is also the entity of a finance gateway (the same name in both datasets).
+    for a in state.get("security_assessments", []):
+        if a["risk_level"] != "low":
+            hypotheses.append(
+                Hypothesis(
+                    source=a["entity"], target=a["title"], source_domain="security", target_domain="security",
+                    relation="reported", explanation=a["detail"], status="observed", confidence=0.9,
+                    evidence_ids=a.get("evidence_ids", []),
+                )
+            )
+    for a in state.get("finance_assessments", []):
+        if a["risk_level"] == "low":
+            continue
+        gw = a["entity"]
+        hypotheses.append(
+            Hypothesis(
+                source=gw, target=f"Revenue at risk: {gw}", source_domain="finance", target_domain="finance",
+                relation="exposes", explanation=a["detail"], status="observed", confidence=0.9,
+                evidence_ids=a.get("evidence_ids", []),
+            )
+        )
+        if services.get(gw, {}).get("errors"):
+            hypotheses.append(
+                Hypothesis(
+                    source=gw, target=f"Transaction failures on {gw}", source_domain="infrastructure", target_domain="finance",
+                    relation="failing gateway drives",
+                    explanation=f"{gw} is also failing in the infrastructure logs, which explains the transaction failures.",
+                    status="observed", confidence=0.85, evidence_ids=a.get("evidence_ids", []),
+                )
+            )
+    for a in state.get("manufacturing_assessments", []):
+        if a["risk_level"] != "low":
+            hypotheses.append(
+                Hypothesis(
+                    source=a["entity"], target=a["title"], source_domain="manufacturing", target_domain="manufacturing",
+                    relation="reported", explanation=a["detail"], status="observed", confidence=0.9,
+                    evidence_ids=a.get("evidence_ids", []),
+                )
+            )
+
     for work in state.get("unowned_work", []):
         if work["service"]:
             hypotheses.append(
@@ -118,6 +160,10 @@ def correlate(state: dict) -> dict:
     worst_supply = max((1 if a["worst_case"]["risk_level"] == "high" else 2 if a["worst_case"]["risk_level"] == "critical" else 0) for a in assessments) if assessments else 0
     score += {0: 0, 1: 20, 2: 30}[worst_supply]
     score += min(cross_domain * 3, 15) + min(len(state.get("unowned_work", [])) * 5, 15)
+    for key in ("security_assessments", "finance_assessments", "manufacturing_assessments"):
+        for a in state.get(key, []):
+            score += 10 if a["risk_level"] == "critical" else 5 if a["risk_level"] == "high" else 0
+    score = min(score, 100)
     severity = next(label for floor, label in SEVERITY_BANDS if score >= floor)
     overall = round(sum(h.confidence for h in hypotheses) / len(hypotheses), 2) if hypotheses else 0.5
     return {
@@ -197,5 +243,23 @@ def plan(state: dict) -> list[dict]:
                 "rationale": f"{item['owner']} made this commitment in the meeting" + (f", due {item['deadline']}." if item.get("deadline") else ", with no deadline given."),
                 "params": {"task_title": item["text"][:280], "owner": item["owner"], "deadline": item.get("deadline", "")},
                 "evidence_ids": item.get("evidence_ids", []),
+            })
+
+    # Security / finance / manufacturing issues map to a safe, catalog-listed
+    # "create_task" recommendation: investigate/contain, never an automatic action.
+    for key, domain in (
+        ("security_assessments", "security"),
+        ("finance_assessments", "finance"),
+        ("manufacturing_assessments", "manufacturing"),
+    ):
+        for a in state.get(key, []):
+            if a["risk_level"] == "low":
+                continue
+            recs.append({
+                "action_type": "create_task", "domain": domain, "priority": 3, "confidence": 0.9,
+                "title": f"Investigate: {a['title']}",
+                "rationale": a["detail"],
+                "params": {"task_title": a["title"], "entity": a["entity"], "metrics": a["metrics"]},
+                "evidence_ids": a.get("evidence_ids", []),
             })
     return sorted(recs, key=lambda r: r["priority"])

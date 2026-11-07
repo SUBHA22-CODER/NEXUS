@@ -4,15 +4,16 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .db import get_db
-from .models import AgentRun, AuditLog, Evidence, Incident, OperationalEvent, Project, Recommendation, Task, Tenant, User
+from .models import AgentRun, AuditLog, Evidence, Incident, OperationalEvent, Project, Recommendation, Task, Tenant, UploadedFile, User
 from .orchestrator.graph import run_investigation, run_recovery
+from .rate_limit import LOGIN, REGISTER, gate
 from .schemas import DecisionIn, LoginIn, ProjectIn, RegisterIn, TaskPatchIn, UserCreateIn
 from .security import DUMMY_HASH, create_token, current_user, hash_password, require_role, verify_password
 from .services import approval_service, audit, ingestion, llm, report_service
@@ -22,6 +23,15 @@ DEMO_DIR = Path(os.environ.get("NEXUS_DEMO_DIR", Path(__file__).resolve().parent
 DEMO_FILES = {
     "initial": ["dependencies.csv", "checkout-platform.log", "inventory.csv", "suppliers.csv", "tasks.csv", "ops-bridge-transcript.txt"],
     "recovery": ["post_recovery/payment-recovery.log", "post_recovery/inventory-update.csv"],
+    "supply_chain": ["dependencies.csv", "checkout-platform.log", "inventory.csv", "suppliers.csv", "tasks.csv", "ops-bridge-transcript.txt"],
+    "it_ops": ["it_dependencies.csv", "it_operations.log"],
+    "security": ["cybersecurity_events_demo.csv"],
+    "finance": ["finance_transactions_demo.csv"],
+    "manufacturing": ["manufacturing_production_demo.csv"],
+    "all": [
+        "dependencies.csv", "checkout-platform.log", "inventory.csv", "suppliers.csv", "tasks.csv", "ops-bridge-transcript.txt",
+        "cybersecurity_events_demo.csv", "finance_transactions_demo.csv", "manufacturing_production_demo.csv",
+    ],
 }
 
 
@@ -47,7 +57,7 @@ def _incident_out(i: Incident, *, full: bool = False) -> dict:
     }
     if full:
         state = i.state or {}
-        out.update({k: state.get(k, []) for k in ("findings", "hypotheses", "uncertainties", "supply_assessments", "unowned_work", "active_agents")})
+        out.update({k: state.get(k, []) for k in ("findings", "hypotheses", "uncertainties", "supply_assessments", "unowned_work", "active_agents", "security_assessments", "finance_assessments", "manufacturing_assessments")})
         out["confidence"] = state.get("confidence")
         out["event_count"] = state.get("event_count", 0)
     return out
@@ -69,7 +79,8 @@ def _task_out(t: Task) -> dict:
 # ---- Auth and workspace -------------------------------------------------------------------------
 
 @router.post("/auth/register", status_code=201)
-def register(body: RegisterIn, db: Session = Depends(get_db)):
+def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
+    gate(REGISTER, request.client.host if request.client else "unknown")
     email = body.email.lower()
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
@@ -89,7 +100,8 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login")
-def login(body: LoginIn, db: Session = Depends(get_db)):
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
+    gate(LOGIN, f"{request.client.host if request.client else 'unknown'}:{body.email.lower()}")
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     valid = verify_password(body.password, user.password_hash if user else DUMMY_HASH)
     if not user or not valid:
@@ -101,7 +113,15 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     tenant = db.get(Tenant, user.tenant_id)
-    return {"user": _user_out(user), "organization": tenant.name, "llm_enabled": llm.available(), "demo_enabled": get_settings().demo_enabled}
+    settings = get_settings()
+    return {
+        "user": _user_out(user),
+        "organization": tenant.name,
+        "llm_enabled": llm.available(),
+        "demo_enabled": settings.demo_enabled,
+        "max_upload_bytes": settings.max_upload_bytes,
+        "max_upload_size_mb": settings.max_upload_size_mb,
+    }
 
 
 @router.get("/users")
@@ -147,22 +167,103 @@ async def upload_files(project_id: uuid.UUID, files: list[UploadFile] = File(...
     for upload in files:
         # Reads one byte past the limit so an oversized file is refused without loading all of it.
         content = await upload.read(limit + 1)
+        filename = upload.filename or "unknown"
         try:
-            results.append(ingestion.ingest_bytes(db, user, project_id, upload.filename or "", content))
+            results.append(ingestion.ingest_bytes(db, user, project_id, filename, content))
             db.commit()
         except ingestion.IngestionError as exc:
             db.rollback()
-            results.append({"file": upload.filename, "error": str(exc)})
+            # Record failed file metadata for transparency
+            try:
+                ingestion.record_failed_file(db, user, project_id, filename, len(content), str(exc))
+                db.commit()
+            except Exception:
+                db.rollback()
+            results.append({"file": filename, "error": str(exc)})
     return {"results": results}
 
 
+@router.get("/projects/{project_id}/files")
+def list_files(project_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _owned(db, Project, project_id, user)
+    files = db.scalars(
+        select(UploadedFile)
+        .where(UploadedFile.project_id == project_id, UploadedFile.tenant_id == user.tenant_id)
+        .order_by(UploadedFile.created_at.desc())
+    ).all()
+    return [
+        {
+            "id": str(f.id),
+            "filename": f.filename,
+            "file_type": f.file_type,
+            "file_size": f.file_size,
+            "status": f.status,
+            "events_count": f.events_count,
+            "dependencies_count": f.dependencies_count,
+            "error_message": f.error_message,
+            "created_by": f.created_by,
+            "created_at": f.created_at.isoformat(),
+        }
+        for f in files
+    ]
+
+
+@router.get("/projects/{project_id}/files/{file_id}")
+def get_file(project_id: uuid.UUID, file_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _owned(db, Project, project_id, user)
+    f = db.get(UploadedFile, file_id)
+    if not f or f.project_id != project_id or f.tenant_id != user.tenant_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    events = db.scalars(
+        select(OperationalEvent)
+        .where(OperationalEvent.project_id == project_id, OperationalEvent.source_file == f.filename)
+        .order_by(OperationalEvent.occurred_at.desc())
+        .limit(100)
+    ).all()
+    return {
+        "file": {
+            "id": str(f.id),
+            "filename": f.filename,
+            "file_type": f.file_type,
+            "file_size": f.file_size,
+            "status": f.status,
+            "events_count": f.events_count,
+            "dependencies_count": f.dependencies_count,
+            "error_message": f.error_message,
+            "created_by": f.created_by,
+            "created_at": f.created_at.isoformat(),
+        },
+        "sample_events": [
+            {
+                "id": str(e.id),
+                "domain": e.domain,
+                "event_type": e.event_type,
+                "severity": e.severity,
+                "summary": e.summary,
+                "occurred_at": e.occurred_at.isoformat(),
+                "locator": e.source_locator,
+            }
+            for e in events
+        ],
+    }
+
+
+@router.delete("/projects/{project_id}/files/{file_id}")
+def delete_file(project_id: uuid.UUID, file_id: uuid.UUID, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
+    _owned(db, Project, project_id, user)
+    success = ingestion.delete_uploaded_file(db, user, project_id, file_id)
+    if not success:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    return {"ok": True, "deleted_id": str(file_id)}
+
+
 @router.post("/projects/{project_id}/demo")
-def load_demo(project_id: uuid.UUID, stage: Literal["initial", "recovery"] = "initial", user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
+def load_demo(project_id: uuid.UUID, stage: Literal["initial", "recovery"] = "initial", environment: Literal["supply_chain", "it_ops", "security", "finance", "manufacturing", "all"] | None = None, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
     if not get_settings().demo_enabled:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo data is not available")
     _owned(db, Project, project_id, user)
     results = []
-    for rel in DEMO_FILES[stage]:
+    for rel in DEMO_FILES[environment or stage]:
         path = DEMO_DIR / rel
         results.append(ingestion.ingest_bytes(db, user, project_id, path.name, path.read_bytes()))
     db.commit()
@@ -207,7 +308,7 @@ def overview(project_id: uuid.UUID, user: User = Depends(current_user), db: Sess
 # ---- Investigations -------------------------------------------------------------------------------
 
 @router.post("/projects/{project_id}/investigations", status_code=202)
-def start_investigation(project_id: uuid.UUID, background: BackgroundTasks, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
+def start_investigation(project_id: uuid.UUID, background: BackgroundTasks, request: Request, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
     _owned(db, Project, project_id, user)
     if not db.scalar(select(func.count()).select_from(OperationalEvent).where(OperationalEvent.project_id == project_id)):
         raise HTTPException(422, "Upload some data before starting an investigation")
@@ -216,7 +317,7 @@ def start_investigation(project_id: uuid.UUID, background: BackgroundTasks, user
     incident = Incident(tenant_id=user.tenant_id, project_id=project_id, created_by=user.id)
     db.add(incident)
     db.flush()
-    audit.record(db, user.tenant_id, user.email, "investigation.started", "incident", incident.id, {})
+    audit.record(db, user.tenant_id, user.email, "investigation.started", "incident", incident.id, {"request_id": getattr(request.state, "request_id", None)})
     db.commit()
     background.add_task(run_investigation, incident.id)
     return _incident_out(incident)

@@ -11,7 +11,7 @@ from typing import Any
 from ..db import session_scope, utcnow
 from ..models import AgentRun
 from ..schemas import Finding
-from ..services import business_service, communication_service, evidence_service, incident_service
+from ..services import business_service, communication_service, evidence_service, finance_service, incident_service, manufacturing_service, security_service
 from .state import InvestigationState
 
 
@@ -320,3 +320,39 @@ def execution_agent(state: InvestigationState, tools: ToolBelt):
         )
     note = f"Checked {len(records)} tracked tasks and the meeting's open actions; {len(work)} unowned piece{'' if len(work) == 1 else 's'} of work."
     return {"unowned_work": list(work.values())}, findings, note, "deterministic"
+
+
+def _domain_agent(name: str, domain: str, analyzer, tool_name: str, assessments_key: str):
+    """Factory for the security/finance/manufacturing agents: one deterministic
+    analyzer each, producing structured, evidence-backed assessments and findings."""
+
+    @agent_node(name)
+    def node(state: InvestigationState, tools: ToolBelt):
+        events = _events(state, domain)
+        analysis = tools.call(
+            tool_name, {"events": len(events)},
+            lambda: analyzer(events),
+            lambda r: f"{len(r['assessments'])} issue(s)",
+        )
+        findings: list[Finding] = []
+        by_entity: dict[str, dict] = {}
+        for e in events:
+            by_entity.setdefault(e["entity"], e)
+        for a in analysis["assessments"]:
+            ev = by_entity.get(a["entity"])
+            a["evidence_ids"] = [_cite(state, ev, a["title"])] if ev else []
+            findings.append(
+                Finding(
+                    agent=name, domain=domain, kind=a["kind"], title=a["title"], detail=a["detail"],
+                    severity=a["severity"], confidence=0.9, data=a["metrics"], evidence_ids=a["evidence_ids"],
+                )
+            )
+        note = f"Analyzed {len(events)} {domain} events; {len(analysis['assessments'])} issue{'s' if len(analysis['assessments']) != 1 else ''}."
+        return {assessments_key: analysis["assessments"]}, findings, note, "deterministic"
+
+    return node
+
+
+security_agent = _domain_agent("security", "security", security_service.analyze, "security_analyzer", "security_assessments")
+finance_agent = _domain_agent("finance", "finance", finance_service.analyze, "finance_analyzer", "finance_assessments")
+manufacturing_agent = _domain_agent("manufacturing", "manufacturing", manufacturing_service.analyze, "manufacturing_analyzer", "manufacturing_assessments")

@@ -1,0 +1,11 @@
+timestamp,event_type,source_ip,target,user,severity,detail,cve
+2026-11-06T08:01:12Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,repeated password failures,
+2026-11-06T08:02:05Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,repeated password failures,
+2026-11-06T08:02:58Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,repeated password failures,
+2026-11-06T08:03:44Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,repeated password failures,
+2026-11-06T08:04:21Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,repeated password failures,
+2026-11-06T08:05:02Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,repeated password failures,
+2026-11-06T08:09:10Z,suspicious_auth,203.0.113.9,identity-service,,high,impossible travel between two regions,
+2026-11-06T08:14:33Z,privilege_escalation,,auth-service,,critical,service account granted admin role outside change window,
+2026-11-06T08:20:47Z,vuln_alert,,crm-api,,critical,unauthenticated remote code execution in crm-api,CVE-2026-1142
+2026-11-06T08:25:19Z,vuln_alert,,inventory-db,,high,SQL injection in report endpoint,CVE-2026-8871

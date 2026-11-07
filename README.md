@@ -202,7 +202,7 @@ NEXUS coordinates four specialist agents via LangGraph. Each agent calls determi
 - **Language**: TypeScript 5.8
 - **Tooling & Bundler**: Vite 7
 - **Styling**: Tailwind CSS
-- **Icons**: Lucide React
+- **Icons**: Inline SVG components (`src/ui.tsx`)
 - **HTTP Client**: Native Fetch API with typed wrappers
 
 ### Backend
@@ -407,6 +407,7 @@ Copy `.env.example` to `.env` or set these in your hosting environment:
 | `NEXUS_JWT_SECRET` | *(auto-generated in dev)* | Cryptographic key for signing HS256 auth tokens. **Must be explicitly set in production.** |
 | `NEXUS_DATABASE_URL` | `sqlite:///./nexus.db` | Database connection string. Use `postgresql+psycopg://user:pass@host:5432/db` for Postgres. |
 | `NEXUS_PO_ADMIN_THRESHOLD` | `5000` | Financial spending limit ($). Actions exceeding this amount require `admin` role approval. |
+| `MAX_UPLOAD_SIZE_MB` | `25` | Maximum file upload size in megabytes (configurable per environment, default: 25 MB). |
 | `OPENAI_API_KEY` | *(optional)* | OpenAI API key. If omitted, NEXUS seamlessly uses its deterministic rule engines. |
 | `NEXUS_OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model identifier when LLM mode is enabled. |
 | `POSTGRES_PASSWORD` | *(empty)* | Database password used by `docker-compose.yml`. |
@@ -451,7 +452,10 @@ All API routes are tenant-scoped under the `/api` prefix. Requests must include 
 ### Projects & Ingestion
 - `GET /api/projects` — List organization projects.
 - `POST /api/projects` — Create an operational workspace project (*Analyst+*).
-- `POST /api/projects/{id}/uploads` — Upload operational logs, CSVs, or transcripts (*Analyst+*).
+- `POST /api/projects/{id}/uploads` — Upload operational datasets (supports `.csv, .tsv, .txt, .log, .json, .jsonl, .md`, up to 25 MB) (*Analyst+*).
+- `GET /api/projects/{id}/files` — List all uploaded datasets with metadata and processing statuses.
+- `GET /api/projects/{id}/files/{file_id}` — View uploaded file details and sample parsed events.
+- `DELETE /api/projects/{id}/files/{file_id}` — Delete an uploaded file and cascade delete its events (*Analyst+*).
 - `POST /api/projects/{id}/demo` — Ingest bundled synthetic demo datasets (*Analyst+*).
 - `GET /api/projects/{id}/events` — Query normalized operational events.
 - `GET /api/projects/{id}/overview` — Retrieve high-level operational health and active risks.
@@ -521,6 +525,18 @@ GitHub Actions automatically executes the complete matrix on every push to `main
    - Rather than assuming an approved action worked, the recovery engine re-evaluates post-recovery telemetry against the initial hypothesis to confirm actual resolution.
 
 ---
+
+## Engineering Audit
+
+A full production-readiness audit (reconnaissance, baseline, testing, security, performance, and readiness scorecard) lives in [`docs/`](docs/):
+
+- [`PROJECT_AUDIT.md`](docs/PROJECT_AUDIT.md) — architecture and current-state findings
+- [`TESTING_STRATEGY.md`](docs/TESTING_STRATEGY.md) — test plan and gaps
+- [`TEST_RESULTS.md`](docs/TEST_RESULTS.md) — executed commands and real outputs
+- [`SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md) — severity-classified security findings
+- [`PERFORMANCE_REPORT.md`](docs/PERFORMANCE_REPORT.md) — measured numbers
+- [`KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) and [`BUG_FIX_LOG.md`](docs/BUG_FIX_LOG.md) — gaps and fixes
+- [`PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md) — readiness scorecard
 
 ## Contributing & License
 

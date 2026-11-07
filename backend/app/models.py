@@ -47,6 +47,24 @@ class Project(Base):
     created_at: Mapped[datetime] = _created()
 
 
+class UploadedFile(Base):
+    """Metadata tracking for uploaded operational datasets."""
+
+    __tablename__ = "uploaded_files"
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(String(300))
+    file_type: Mapped[str] = mapped_column(String(50))  # csv | tsv | log | json | jsonl | txt | md
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="processed")  # processed | failed | partial
+    events_count: Mapped[int] = mapped_column(Integer, default=0)
+    dependencies_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(320), default="")
+    created_at: Mapped[datetime] = _created()
+
+
 class OperationalEvent(Base):
     """The common event schema: every input is normalized to this before the orchestrator sees it."""
 

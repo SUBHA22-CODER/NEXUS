@@ -1,0 +1,10 @@
+timestamp,machine,status,output_units,capacity_units,downtime_minutes,reason
+2026-11-06T08:00:00Z,press-01,operational,900,1000,,
+2026-11-06T08:30:00Z,press-01,down,340,1000,120,hydraulic failure
+2026-11-06T09:00:00Z,press-01,down,340,1000,90,hydraulic failure
+2026-11-06T08:00:00Z,cnc-02,operational,780,800,,
+2026-11-06T08:20:00Z,cnc-02,degraded,540,800,,tool wear
+2026-11-06T09:00:00Z,cnc-02,degraded,510,800,,tool wear
+2026-11-06T08:00:00Z,pack-03,operational,1200,1200,,
+2026-11-06T08:30:00Z,pack-03,operational,1180,1200,,
+2026-11-06T09:00:00Z,pack-03,operational,1170,1200,,

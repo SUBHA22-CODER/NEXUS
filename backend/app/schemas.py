@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
-Domain = Literal["infrastructure", "supply", "communication", "execution"]
+Domain = Literal["infrastructure", "supply", "communication", "execution", "security", "finance", "manufacturing"]
 Severity = Literal["info", "warning", "high", "critical"]
 Role = Literal["admin", "approver", "analyst", "viewer"]
 Method = Literal["deterministic", "rule_based", "llm"]

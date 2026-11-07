@@ -1,0 +1,12 @@
+2026-11-06T08:00:00Z INFO api-gateway request status=200 latency_ms=120
+2026-11-06T08:01:00Z INFO api-gateway request status=200 latency_ms=140
+2026-11-06T08:02:00Z INFO db-primary connections healthy pool_in_use=4 pool_size=50
+2026-11-06T08:04:00Z WARN api-gateway request latency rising status=200 latency_ms=620 cpu_pct=84
+2026-11-06T08:06:00Z WARN db-primary cpu_pct=91 memory_pct=88 connections=48
+2026-11-06T08:08:00Z ERROR db-primary query status=500 error="connection pool exhausted" pool_in_use=50 pool_size=50
+2026-11-06T08:09:00Z ERROR api-gateway request status=502 error="upstream db-primary returned 500"
+2026-11-06T08:10:00Z ERROR db-primary query status=500 error="connection pool exhausted" pool_in_use=50 pool_size=50
+2026-11-06T08:11:00Z ERROR api-gateway request status=502 error="upstream db-primary returned 500"
+2026-11-06T08:13:00Z ERROR db-primary query status=500 error="connection pool exhausted" pool_in_use=50 pool_size=50
+2026-11-06T08:15:00Z ERROR api-gateway request status=502 error="upstream db-primary returned 500"
+2026-11-06T08:18:00Z ERROR db-primary query status=500 error="connection pool exhausted" pool_in_use=50 pool_size=50

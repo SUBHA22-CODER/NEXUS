@@ -15,10 +15,18 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     jwt_ttl_minutes: int = 480
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    max_upload_bytes: int = 5 * 1024 * 1024
-    max_lines_per_file: int = 50_000
+    max_upload_size_mb: int = Field(default=25, validation_alias="MAX_UPLOAD_SIZE_MB")
+    max_upload_bytes: int = 25 * 1024 * 1024
+    max_lines_per_file: int = 100_000
     # Purchase orders above this value need an admin rather than an approver.
     po_admin_threshold: float = 5000.0
+
+    @model_validator(mode="after")
+    def _calculate_limits(self) -> "Settings":
+        # Synchronize max_upload_bytes with max_upload_size_mb if configured
+        if self.max_upload_size_mb:
+            self.max_upload_bytes = self.max_upload_size_mb * 1024 * 1024
+        return self
 
     # Optional. Without a key NEXUS uses its rule-based extractors and templated narrative,
     # and labels the output accordingly.

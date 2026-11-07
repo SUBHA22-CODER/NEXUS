@@ -1,0 +1,3 @@
+source,target,relation,source_domain,target_domain
+db-primary,api-gateway,query serving,infrastructure,infrastructure
+api-gateway,payment-web,request routing,infrastructure,infrastructure

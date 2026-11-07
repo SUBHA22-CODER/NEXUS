@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import utcnow
-from ..models import Dependency, OperationalEvent, User
+from ..models import Dependency, OperationalEvent, UploadedFile, User
 from . import audit
 from .normalizer import UnsupportedFile, normalize_file, parse_timestamp
 
@@ -96,16 +96,81 @@ def ingest_bytes(db: Session, user: User, project_id: uuid.UUID, filename: str, 
         )
         deps_added += 1
 
+    file_rec = UploadedFile(
+        tenant_id=user.tenant_id,
+        project_id=project_id,
+        filename=name,
+        file_type=result.kind,
+        file_size=len(content),
+        status="processed" if not result.rejected else ("partial" if (added or deps_added) else "failed"),
+        events_count=added,
+        dependencies_count=deps_added,
+        created_by=user.email,
+    )
+    db.add(file_rec)
+    db.flush()
+
     audit.record(
         db, user.tenant_id, user.email, "data.ingested", "project", project_id,
         {"file": name, "kind": result.kind, "events_added": added, "dependencies_added": deps_added, "rejected": len(result.rejected)},
     )
     return {
+        "id": str(file_rec.id),
         "file": name,
         "kind": result.kind,
+        "file_size": len(content),
         "events_added": added,
         "dependencies_added": deps_added,
         "duplicates_skipped": len(result.events) + len(result.dependencies) - added - deps_added,
         "rejected": result.rejected[:50],
         "rejected_count": len(result.rejected),
     }
+
+
+def record_failed_file(db: Session, user: User, project_id: uuid.UUID, filename: str, content_size: int, error_msg: str) -> UploadedFile:
+    file_rec = UploadedFile(
+        tenant_id=user.tenant_id,
+        project_id=project_id,
+        filename=_safe_name(filename),
+        file_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "unknown",
+        file_size=content_size,
+        status="failed",
+        events_count=0,
+        dependencies_count=0,
+        error_message=error_msg[:1000],
+        created_by=user.email,
+    )
+    db.add(file_rec)
+    db.flush()
+    return file_rec
+
+
+def delete_uploaded_file(db: Session, user: User, project_id: uuid.UUID, file_id: uuid.UUID) -> bool:
+    from sqlalchemy import delete
+
+    file_rec = db.get(UploadedFile, file_id)
+    if not file_rec or file_rec.project_id != project_id or file_rec.tenant_id != user.tenant_id:
+        return False
+
+    filename = file_rec.filename
+    # Delete associated operational events
+    db.execute(
+        delete(OperationalEvent).where(
+            OperationalEvent.project_id == project_id,
+            OperationalEvent.source_file == filename,
+        )
+    )
+    # Delete associated dependencies
+    db.execute(
+        delete(Dependency).where(
+            Dependency.project_id == project_id,
+            Dependency.origin.startswith(filename),
+        )
+    )
+    db.delete(file_rec)
+    audit.record(
+        db, user.tenant_id, user.email, "file.deleted", "uploaded_file", file_id,
+        {"filename": filename},
+    )
+    db.commit()
+    return True

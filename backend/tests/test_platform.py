@@ -264,7 +264,7 @@ def test_partial_data_still_investigates_and_skips_agents(client):
     client.post(f"/api/projects/{pid}/uploads", headers=admin, files=[("files", ("a.log", log))])
     iid = client.post(f"/api/projects/{pid}/investigations", headers=admin).json()["id"]
     runs = {r["agent"]: r["status"] for r in client.get(f"/api/incidents/{iid}/agent-runs", headers=admin).json()}
-    assert runs == {"incident": "completed", "communication": "skipped", "supply": "skipped", "execution": "skipped"}
+    assert runs == {"incident": "completed", "communication": "skipped", "supply": "skipped", "execution": "skipped", "security": "skipped", "finance": "skipped", "manufacturing": "skipped"}
     incident = client.get(f"/api/incidents/{iid}", headers=admin).json()
     assert any("No dependency map" in u for u in incident["uncertainties"])
     # No deploy explains it, so NEXUS proposes investigating rather than rolling back.
@@ -328,3 +328,121 @@ def test_restart_fails_interrupted_investigations_and_unblocks_the_project(clien
 def test_title_keeps_identifier_case(client):
     admin = register(client)
     assert "SKU-1042" in investigate(client, admin, project(client, admin))["title"]
+
+
+def test_login_is_rate_limited_outside_the_test_environment(client, monkeypatch):
+    from app import rate_limit
+
+    class _Prod:
+        env = "production"
+
+    monkeypatch.setattr(rate_limit, "get_settings", lambda: _Prod())
+    rate_limit.LOGIN.limiter.reset()
+    payload = {"email": "nobody@example.com", "password": "wrong"}
+    for _ in range(10):
+        assert client.post("/api/auth/login", json=payload).status_code == 401
+    res = client.post("/api/auth/login", json=payload)
+    assert res.status_code == 429
+    assert "Too many" in res.json()["detail"]
+    rate_limit.LOGIN.limiter.reset()
+
+
+def test_requests_carry_a_correlation_id(client):
+    res = client.get("/healthz")
+    assert res.headers.get("x-request-id")
+
+
+def test_investigation_audit_records_the_request_id(client):
+    admin = register(client)
+    investigate(client, admin, project(client, admin))
+    log = client.get("/api/audit", headers=admin).json()
+    started = next(e for e in log["entries"] if e["action"] == "investigation.started")
+    assert "request_id" in started["detail"] and started["detail"]["request_id"]
+
+
+def test_each_environment_investigates_independently(client):
+    admin = register(client)
+    for env, domain, key in (
+        ("security", "security", "security_assessments"),
+        ("finance", "finance", "finance_assessments"),
+        ("manufacturing", "manufacturing", "manufacturing_assessments"),
+    ):
+        pid = project(client, admin)
+        assert client.post(f"/api/projects/{pid}/demo", headers=admin, params={"environment": env}).status_code == 200
+        iid = client.post(f"/api/projects/{pid}/investigations", headers=admin).json()["id"]
+        incident = client.get(f"/api/incidents/{iid}", headers=admin).json()
+        assert incident["status"] == "awaiting_approval", env
+        assert incident[key], env
+        assert any(f["domain"] == domain for f in incident["findings"]), env
+        assert all(f["evidence_ids"] for f in incident["findings"] if f["domain"] == domain), env
+        assert client.get(f"/api/incidents/{iid}/recommendations", headers=admin).json()
+
+
+def test_all_environments_correlate_finance_and_infrastructure(client):
+    admin = register(client)
+    pid = project(client, admin)
+    assert client.post(f"/api/projects/{pid}/demo", headers=admin, params={"environment": "all"}).status_code == 200
+    iid = client.post(f"/api/projects/{pid}/investigations", headers=admin).json()["id"]
+    incident = client.get(f"/api/incidents/{iid}", headers=admin).json()
+    assert incident["finance_assessments"] and incident["security_assessments"] and incident["manufacturing_assessments"]
+    pairs = {(h["source_domain"], h["target_domain"]) for h in incident["hypotheses"]}
+    assert ("infrastructure", "finance") in pairs
+
+
+def test_file_upload_and_management_lifecycle(client):
+    admin = register(client)
+    pid = project(client, admin)
+
+    # 1. Upload multiple formats (TSV, JSON, CSV)
+    files = [
+        ("files", ("inventory.tsv", b"sku\ton_hand\tdaily_demand\nSKU-101\t25\t5\n", "text/tab-separated-values")),
+        ("files", ("events.json", b'[{"service": "db", "severity": "high", "message": "connection limit reached"}]', "application/json")),
+        ("files", ("notes.txt", b"Date: 2026-11-07\nMeeting: Incident Bridge\n\nDatabase degraded during peak.", "text/plain")),
+    ]
+    res = client.post(f"/api/projects/{pid}/uploads", headers=admin, files=files)
+    assert res.status_code == 200, res.text
+    results = res.json()["results"]
+    assert len(results) == 3
+    assert all("error" not in r or not r["error"] for r in results)
+
+    # 2. List files
+    file_list = client.get(f"/api/projects/{pid}/files", headers=admin).json()
+    assert len(file_list) == 3
+    names = {f["filename"] for f in file_list}
+    assert "inventory.tsv" in names and "events.json" in names and "notes.txt" in names
+
+    # 3. Get single file details
+    target_file = next(f for f in file_list if f["filename"] == "events.json")
+    details = client.get(f"/api/projects/{pid}/files/{target_file['id']}", headers=admin).json()
+    assert details["file"]["filename"] == "events.json"
+    assert len(details["sample_events"]) >= 1
+
+    # 4. Delete file
+    del_res = client.delete(f"/api/projects/{pid}/files/{target_file['id']}", headers=admin)
+    assert del_res.status_code == 200
+    after_list = client.get(f"/api/projects/{pid}/files", headers=admin).json()
+    assert len(after_list) == 2
+    assert "events.json" not in {f["filename"] for f in after_list}
+
+
+def test_oversized_upload_rejection(client, monkeypatch):
+    from app import api, config
+    from app.services import ingestion
+
+    class _SmallLimit:
+        max_upload_bytes = 100
+        max_upload_size_mb = 1
+        max_lines_per_file = 50000
+
+    admin = register(client)
+    pid = project(client, admin)
+    large_content = b"x" * 200
+    files = [("files", ("oversized.txt", large_content, "text/plain"))]
+    monkeypatch.setattr(config, "get_settings", lambda: _SmallLimit())
+    monkeypatch.setattr(ingestion, "get_settings", lambda: _SmallLimit())
+    monkeypatch.setattr(api, "get_settings", lambda: _SmallLimit())
+
+    res = client.post(f"/api/projects/{pid}/uploads", headers=admin, files=files)
+    assert res.status_code == 200
+    r = res.json()["results"][0]
+    assert "exceeds" in r.get("error", "").lower()

@@ -167,3 +167,120 @@ def test_root_cause_prefers_upstream_even_if_downstream_logged_first():
 def test_healthy_logs_have_no_root_cause():
     event = {"id": "1", "event_type": "service_info", "entity": "api", "occurred_at": "2026-11-06T09:00:00+00:00", "attributes": {"status": "200"}, "raw": "", "summary": ""}
     assert incident_service.analyze([event], [])["root_cause"] is None
+
+
+def test_rate_limiter_rejects_only_after_budget_is_used():
+    from app.rate_limit import SlidingWindowLimiter
+
+    limiter = SlidingWindowLimiter(3, 60)
+    assert all(limiter.allow("k") for _ in range(3))
+    assert not limiter.allow("k")
+    # Independent keys are unaffected.
+    assert limiter.allow("other")
+    limiter.reset("k")
+    assert limiter.allow("k")
+
+
+def test_security_csv_is_normalized():
+    text = "timestamp,event_type,source_ip,target,user,severity,detail\n2026-11-06T08:01:00Z,failed_login,198.51.100.23,vpn-gateway,svc.backup,,retry\n"
+    result = normalize_csv("s.csv", text, utcnow())
+    assert result.kind == "security"
+    ev = result.events[0]
+    assert ev.domain == "security" and ev.entity == "198.51.100.23" and ev.severity == "warning"
+
+
+def test_finance_csv_rejects_bad_status():
+    text = "timestamp,gateway,status,amount\n2026-11-06T09:00:00Z,pay,success,89.00\n2026-11-06T09:01:00Z,pay,weird,10.00\n"
+    result = normalize_csv("f.csv", text, utcnow())
+    assert len(result.events) == 1 and result.rejected[0]["locator"] == "row 3"
+
+
+def test_security_service_detects_brute_force_and_vuln():
+    from app.services import security_service
+
+    events = [{"id": str(i), "domain": "security", "event_type": "failed_login", "entity": "1.2.3.4", "severity": "warning", "summary": "fail", "attributes": {"user": "svc"}, "occurred_at": "2026-11-06T08:00:00Z"} for i in range(5)]
+    events.append({"id": "v", "domain": "security", "event_type": "vuln_alert", "entity": "crm-api", "severity": "critical", "summary": "RCE", "attributes": {"cve": "CVE-1"}, "occurred_at": "2026-11-06T09:00:00Z"})
+    kinds = {a["kind"] for a in security_service.analyze(events)["assessments"]}
+    assert "brute_force" in kinds and "vuln_alert" in kinds
+
+
+def test_finance_service_computes_rate_and_exposure():
+    from app.services import finance_service
+
+    events = [
+        {"id": "a", "domain": "finance", "event_type": "transaction", "entity": "payment-service", "attributes": {"status": "success", "amount": 89.0}, "severity": "info", "summary": "ok"},
+        {"id": "b", "domain": "finance", "event_type": "transaction", "entity": "payment-service", "attributes": {"status": "failed", "amount": 89.0}, "severity": "high", "summary": "fail"},
+        {"id": "c", "domain": "finance", "event_type": "transaction", "entity": "payment-service", "attributes": {"status": "timeout", "amount": 129.0}, "severity": "high", "summary": "to"},
+    ]
+    a = finance_service.analyze(events)["assessments"][0]
+    assert a["metrics"]["total"] == 3 and a["metrics"]["succeeded"] == 1
+    assert a["metrics"]["backlog"] == 2 and a["metrics"]["revenue_exposure"] == 218.0
+    assert a["risk_level"] == "critical"
+
+
+def test_manufacturing_service_computes_downtime():
+    from app.services import manufacturing_service
+
+    events = [
+        {"id": "a", "domain": "manufacturing", "event_type": "production_record", "entity": "press-01", "attributes": {"status": "down", "downtime_minutes": 120}, "severity": "critical", "summary": "d"},
+        {"id": "b", "domain": "manufacturing", "event_type": "production_record", "entity": "press-01", "attributes": {"status": "down", "downtime_minutes": 90}, "severity": "critical", "summary": "d"},
+    ]
+    a = manufacturing_service.analyze(events)["assessments"][0]
+    assert a["metrics"]["downtime_minutes"] == 210.0 and a["risk_level"] == "critical"
+
+
+def test_tsv_normalization():
+    tsv_text = "sku\ton_hand\tdaily_demand\nSKU-101\t25\t5\n"
+    res = normalize_csv("inventory.tsv", tsv_text, utcnow())
+    assert res.kind == "inventory"
+    assert len(res.events) == 1
+    assert res.events[0].entity == "SKU-101"
+    assert res.events[0].attributes["on_hand"] == 25.0
+
+
+def test_generic_tabular_csv_normalization():
+    csv_text = "service,error_type,severity,summary,latency_ms\nauth-service,token_expired,warning,Expired token on refresh,120\n"
+    from app.services.normalizer import normalize_file
+
+    res = normalize_file("custom_metrics.csv", csv_text, utcnow())
+    assert res.kind in ("tabular", "telemetry")
+    assert len(res.events) == 1
+    ev = res.events[0]
+    assert ev.domain == "infrastructure"
+    assert ev.entity == "auth-service"
+    assert ev.severity == "warning"
+    assert ev.summary == "Expired token on refresh"
+    assert ev.attributes["latency_ms"] == "120"
+
+
+def test_json_array_normalization():
+    from app.services.normalizer import normalize_file
+
+    json_text = """[
+        {"service": "payment-gw", "status": "failed", "severity": "high", "message": "Connection refused to upstream gateway"},
+        {"source": "frontend", "target": "payment-gw", "relation": "calls"}
+    ]"""
+    res = normalize_file("telemetry.json", json_text, utcnow())
+    assert res.kind == "json"
+    assert len(res.events) == 1
+    assert len(res.dependencies) == 1
+    assert res.events[0].entity == "payment-gw"
+    assert res.events[0].severity == "high"
+    assert res.dependencies[0].source == "frontend"
+    assert res.dependencies[0].target == "payment-gw"
+
+
+def test_freeform_text_notes_normalization():
+    from app.services.normalizer import normalize_file
+
+    text = """Date: 2026-11-07
+Meeting: Operational Incident Handover
+
+Primary database connection pool exhausted during peak traffic.
+SRE team scaling read replicas by 14:00 UTC.
+"""
+    res = normalize_file("incident_handover.txt", text, utcnow())
+    assert res.kind == "notes"
+    assert len(res.events) >= 1
+    assert res.events[0].domain == "communication"
+    assert any("database connection pool" in e.summary.lower() for e in res.events)

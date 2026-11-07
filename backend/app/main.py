@@ -1,5 +1,7 @@
 """FastAPI application entry point."""
+import logging
 import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,6 +15,7 @@ from .db import fail_interrupted_investigations, init_db
 
 REQUESTS = Counter("nexus_http_requests_total", "HTTP requests", ["method", "route", "status"])
 LATENCY = Histogram("nexus_http_request_seconds", "HTTP request latency", ["route"])
+log = logging.getLogger("nexus.http")
 
 
 @asynccontextmanager
@@ -34,11 +37,18 @@ app.add_middleware(
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     started = time.perf_counter()
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
     response = await call_next(request)
     # The route template, not the raw path, so ids cannot blow up metric cardinality.
     route = getattr(request.scope.get("route"), "path", "unmatched")
     REQUESTS.labels(request.method, route, response.status_code).inc()
     LATENCY.labels(route).observe(time.perf_counter() - started)
+    response.headers["X-Request-ID"] = request_id
+    log.info(
+        "request method=%s path=%s status=%s request_id=%s duration_ms=%.1f",
+        request.method, request.url.path, response.status_code, request_id, (time.perf_counter() - started) * 1000,
+    )
     return response
 
 

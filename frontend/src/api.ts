@@ -3,7 +3,14 @@ export type Role = "admin" | "approver" | "analyst" | "viewer";
 
 export interface User { id: string; name: string; email: string; role: Role }
 export interface Project { id: string; name: string; description: string; created_at: string }
-export interface Me { user: User; organization: string; llm_enabled: boolean; demo_enabled: boolean }
+export interface Me {
+  user: User;
+  organization: string;
+  llm_enabled: boolean;
+  demo_enabled: boolean;
+  max_upload_bytes?: number;
+  max_upload_size_mb?: number;
+}
 export interface Finding {
   agent: string; domain: Domain; kind: string; title: string; detail: string; severity: string;
   confidence: number; method: string; data: Record<string, unknown>; evidence_ids: string[];
@@ -48,9 +55,29 @@ export interface GraphData {
   nodes: { id: string; label: string; domain: Domain }[];
   edges: Omit<Hypothesis, "source_domain" | "target_domain">[];
 }
+export interface UploadedFileRecord {
+  id: string;
+  filename: string;
+  file_type: string;
+  file_size: number;
+  status: "processed" | "failed" | "partial";
+  events_count: number;
+  dependencies_count: number;
+  error_message?: string;
+  created_by: string;
+  created_at: string;
+}
 export interface UploadResult {
-  file: string; kind?: string; events_added?: number; dependencies_added?: number; duplicates_skipped?: number;
-  rejected?: { locator: string; reason: string }[]; rejected_count?: number; error?: string;
+  id?: string;
+  file: string;
+  kind?: string;
+  file_size?: number;
+  events_added?: number;
+  dependencies_added?: number;
+  duplicates_skipped?: number;
+  rejected?: { locator: string; reason: string }[];
+  rejected_count?: number;
+  error?: string;
 }
 export interface AuditEntry { sequence: number; actor: string; action: string; entity_type: string; detail: Record<string, unknown>; created_at: string; hash: string }
 export interface Report {
@@ -111,6 +138,10 @@ export const upload = async (projectId: string, files: File[]): Promise<{ result
   files.forEach((f) => form.append("files", f));
   return (await send(`/projects/${projectId}/uploads`, { method: "POST", body: form })).json();
 };
+export const listFiles = (projectId: string): Promise<UploadedFileRecord[]> =>
+  get<UploadedFileRecord[]>(`/projects/${projectId}/files`);
+export const deleteFile = (projectId: string, fileId: string): Promise<{ ok: boolean }> =>
+  send(`/projects/${projectId}/files/${fileId}`, { method: "DELETE" }).then((r) => r.json());
 export async function downloadReport(incidentId: string) {
   const res = await send(`/incidents/${incidentId}/report?format=markdown`);
   const url = URL.createObjectURL(await res.blob());

@@ -1,0 +1,13 @@
+timestamp,gateway,status,amount,currency,latency_ms
+2026-11-06T09:00:05Z,payment-service,success,89.00,USD,84
+2026-11-06T09:02:12Z,payment-service,success,129.00,USD,91
+2026-11-06T09:05:30Z,payment-service,success,45.00,USD,88
+2026-11-06T09:07:48Z,payment-service,success,89.00,USD,86
+2026-11-06T09:11:03Z,payment-service,success,129.00,USD,240
+2026-11-06T09:12:40Z,payment-service,failed,89.00,USD,1500
+2026-11-06T09:13:04Z,payment-service,failed,129.00,USD,1800
+2026-11-06T09:13:29Z,payment-service,failed,89.00,USD,1900
+2026-11-06T09:14:18Z,payment-service,failed,45.00,USD,2100
+2026-11-06T09:15:03Z,payment-service,timeout,89.00,USD,30000
+2026-11-06T09:16:40Z,payment-service,timeout,129.00,USD,30000
+2026-11-06T09:18:12Z,payment-service,success,89.00,USD,120

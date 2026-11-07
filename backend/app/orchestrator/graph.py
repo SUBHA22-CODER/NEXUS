@@ -19,7 +19,7 @@ from . import correlate as correlation
 from .state import InvestigationState, RecoveryState
 
 log = logging.getLogger("nexus.orchestrator")
-AGENT_ORDER = ["incident", "communication", "supply", "execution"]
+AGENT_ORDER = ["incident", "communication", "supply", "execution", "security", "finance", "manufacturing"]
 
 
 def _json_safe(value):
@@ -58,6 +58,9 @@ def triage(state: InvestigationState) -> dict:
             "communication": "communication" in domains,
             "supply": "supply" in domains,
             "execution": "execution" in domains or "communication" in domains,
+            "security": "security" in domains,
+            "finance": "finance" in domains,
+            "manufacturing": "manufacturing" in domains,
         }
         active = [a for a in AGENT_ORDER if needed[a]]
         sequence = 0
@@ -68,7 +71,10 @@ def triage(state: InvestigationState) -> dict:
     uncertainties = []
     if not deps:
         uncertainties.append("No dependency map was supplied, so links between services could not be traced.")
-    for domain, label in (("infrastructure", "logs"), ("supply", "inventory data"), ("communication", "transcripts")):
+    for domain, label in (
+        ("infrastructure", "logs"), ("supply", "inventory data"), ("communication", "transcripts"),
+        ("security", "security events"), ("finance", "transaction data"), ("manufacturing", "production data"),
+    ):
         if domain not in domains:
             uncertainties.append(f"No {label} supplied: this view may be missing a domain.")
     return {"events": event_dicts, "dependencies": dep_dicts, "active_agents": active, "completed_agents": [], "findings": [], "evidence_refs": [], "uncertainties": uncertainties, "sequence": sequence}
@@ -127,6 +133,9 @@ def build_investigation_graph():
     graph.add_node("communication", agents.communication_agent)
     graph.add_node("supply", agents.supply_agent)
     graph.add_node("execution", agents.execution_agent)
+    graph.add_node("security", agents.security_agent)
+    graph.add_node("finance", agents.finance_agent)
+    graph.add_node("manufacturing", agents.manufacturing_agent)
     graph.add_node("correlate", correlate_node)
     graph.add_node("plan", plan_node)
     graph.add_node("policy", policy_node)
