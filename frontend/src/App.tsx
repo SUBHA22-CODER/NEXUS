@@ -80,7 +80,7 @@ function ProjectShell() {
         </nav>
         <div className="hidden border-t border-paper/15 px-5 py-4 md:block">
           <ul className="mb-4 space-y-1">
-            {DOMAINS.map((d) => (
+            {DOMAINS.slice(0, 4).map((d) => (
               <li key={d} className="flex items-center gap-2 font-mono text-[0.68rem] text-paper/70">
                 <span className="inline-block h-1 w-5 rounded" style={{ background: DOMAIN[d].color }} /> {DOMAIN[d].label}
               </li>

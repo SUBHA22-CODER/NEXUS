@@ -441,7 +441,7 @@ export default function DataIngestion() {
               <li key={e.id} className="py-2.5">
                 <p className="flex flex-wrap items-center gap-1.5 text-xs">
                   <Station domain={e.domain} size={9} />
-                  <span className={`font-semibold ${DOMAIN[e.domain].text}`}>{e.event_type.replaceAll("_", " ")}</span>
+                  <span className={`font-semibold ${(DOMAIN[e.domain] || DOMAIN.infrastructure).text}`}>{e.event_type.replaceAll("_", " ")}</span>
                   {e.severity !== "info" && <Chip value={e.severity} />}
                   <span className="font-mono text-muted">{fmtDate(e.occurred_at)}</span>
                 </p>

@@ -4,7 +4,7 @@ import { useProject } from "../App";
 import { get, type Domain, type GraphData } from "../api";
 import { Chip, Confidence, DOMAIN, Empty, ErrorNote, Loading, PageHead, Station, useData } from "../ui";
 
-const LANES: Domain[] = ["communication", "infrastructure", "supply", "execution"];
+const DEFAULT_LANES: Domain[] = ["communication", "infrastructure", "supply", "execution"];
 const COL = 178;
 const ROW = 92;
 const LEFT = 150;
@@ -52,17 +52,21 @@ function layout(graph: GraphData) {
     slots.set(key, stack + 1);
     return { ...n, col: depth.get(n.id) ?? 0, stack };
   });
-  const laneRows = new Map<Domain, number>(LANES.map((d) => [d, 1]));
+
+  const nodeDomains = Array.from(new Set(graph.nodes.map((n) => n.domain)));
+  const lanes = [...DEFAULT_LANES, ...nodeDomains.filter((d) => !DEFAULT_LANES.includes(d))];
+
+  const laneRows = new Map<Domain, number>(lanes.map((d) => [d, 1]));
   placed.forEach((n) => laneRows.set(n.domain, Math.max(laneRows.get(n.domain) ?? 1, n.stack + 1)));
   const laneY = new Map<Domain, number>();
   let y = TOP;
-  for (const d of LANES) {
+  for (const d of lanes) {
     laneY.set(d, y);
     y += (laneRows.get(d) ?? 1) * ROW;
   }
   const pos = new Map(placed.map((n) => [n.id, { x: LEFT + n.col * COL, y: (laneY.get(n.domain) ?? 0) + n.stack * ROW }]));
   const cols = Math.max(...placed.map((n) => n.col), 0) + 1;
-  return { placed, pos, laneY, laneRows, width: LEFT + cols * COL + 40, height: y };
+  return { placed, pos, laneY, laneRows, lanes, width: LEFT + cols * COL + 40, height: y };
 }
 
 function edgePath(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -109,19 +113,20 @@ export default function IntelligenceGraph() {
               aria-label="Map of connections between infrastructure, supply, communication and execution"
               onClick={(e) => { if (e.target === e.currentTarget) { setSelected(null); setFocus(null); } }}
             >
-              {LANES.map((d) => {
-                const y = shape.laneY.get(d)!;
+              {shape.lanes.map((d) => {
+                const y = shape.laneY.get(d) ?? 0;
+                const dom = DOMAIN[d] || DOMAIN.infrastructure;
                 return (
                   <g key={d}>
-                    <line x1={0} x2={shape.width} y1={y} y2={y} stroke={DOMAIN[d].color} strokeOpacity={0.14} strokeWidth={22} />
-                    <text x={6} y={y + 4} fontFamily="var(--font-mono)" fontSize={10} fontWeight={600} fill={DOMAIN[d].color} style={{ textTransform: "uppercase" }}>{DOMAIN[d].label}</text>
+                    <line x1={0} x2={shape.width} y1={y} y2={y} stroke={dom.color} strokeOpacity={0.14} strokeWidth={22} />
+                    <text x={6} y={y + 4} fontFamily="var(--font-mono)" fontSize={10} fontWeight={600} fill={dom.color} style={{ textTransform: "uppercase" }}>{dom.label}</text>
                   </g>
                 );
               })}
               {edges.map((e, i) => {
                 const a = shape.pos.get(e.source)!;
                 const b = shape.pos.get(e.target)!;
-                const color = DOMAIN[domainOf.get(e.source) ?? "infrastructure"].color;
+                const color = (DOMAIN[domainOf.get(e.source) ?? "infrastructure"] || DOMAIN.infrastructure).color;
                 const on = active(i);
                 return (
                   <g key={i} className="cursor-pointer" onClick={() => { setSelected(selected === i ? null : i); setFocus(null); }}>
@@ -145,6 +150,7 @@ export default function IntelligenceGraph() {
                 const p = shape.pos.get(n.id)!;
                 const lines = wrap(n.label);
                 const dim = focus && focus !== n.id && !edges.some((e) => (e.source === focus && e.target === n.id) || (e.target === focus && e.source === n.id));
+                const nodeDom = DOMAIN[n.domain] || DOMAIN.infrastructure;
                 return (
                   <g
                     key={n.id}
@@ -153,11 +159,11 @@ export default function IntelligenceGraph() {
                     opacity={dim ? 0.3 : 1}
                     tabIndex={0}
                     role="button"
-                    aria-label={`${n.label}, ${DOMAIN[n.domain].label}. Show its links.`}
+                    aria-label={`${n.label}, ${nodeDom.label}. Show its links.`}
                     onClick={() => { setFocus(focus === n.id ? null : n.id); setSelected(null); }}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFocus(focus === n.id ? null : n.id); setSelected(null); } }}
                   >
-                    <circle r={focus === n.id ? 13 : 10} fill="var(--color-card)" stroke={focus === n.id ? "var(--color-ink)" : DOMAIN[n.domain].color} strokeWidth={5} />
+                    <circle r={focus === n.id ? 13 : 10} fill="var(--color-card)" stroke={focus === n.id ? "var(--color-ink)" : nodeDom.color} strokeWidth={5} />
                     {lines.map((line, i) => (
                       <text key={i} y={26 + i * 13} textAnchor="middle" fontSize={11.5} fontWeight={600} fill="var(--color-ink)" paintOrder="stroke" stroke="var(--color-card)" strokeWidth={3.5}>{line}</text>
                     ))}

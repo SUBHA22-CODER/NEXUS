@@ -446,3 +446,39 @@ def test_oversized_upload_rejection(client, monkeypatch):
     assert res.status_code == 200
     r = res.json()["results"][0]
     assert "exceeds" in r.get("error", "").lower()
+
+
+def test_investigation_force_and_cancellation(client):
+    from app.db import SessionLocal
+    from app.models import Incident
+
+    admin = register(client)
+    pid = project(client, admin)
+    client.post(f"/api/projects/{pid}/demo", headers=admin)
+
+    # 1. Start investigation
+    res1 = client.post(f"/api/projects/{pid}/investigations", headers=admin)
+    assert res1.status_code == 202
+
+    # 2. Simulate a stuck running incident
+    with SessionLocal() as db:
+        inc = db.get(Incident, uuid.UUID(res1.json()["id"]))
+        inc.status = "running"
+        db.commit()
+
+    # 3. Starting while running gives 409 Conflict
+    res2 = client.post(f"/api/projects/{pid}/investigations", headers=admin)
+    assert res2.status_code == 409
+
+    # 4. Starting with force=true cancels previous and succeeds
+    res3 = client.post(f"/api/projects/{pid}/investigations?force=true", headers=admin)
+    assert res3.status_code == 202
+
+    # 5. Cancel endpoint
+    with SessionLocal() as db:
+        inc = db.get(Incident, uuid.UUID(res3.json()["id"]))
+        inc.status = "running"
+        db.commit()
+    res4 = client.post(f"/api/projects/{pid}/investigations/cancel", headers=admin)
+    assert res4.status_code == 200
+    assert res4.json()["cancelled"] >= 1

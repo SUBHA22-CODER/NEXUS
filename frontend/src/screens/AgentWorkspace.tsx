@@ -9,11 +9,19 @@ const AGENTS: Record<string, { domain: Domain; title: string; role: string }> = 
   communication: { domain: "communication", title: "Communication Agent", role: "Decisions, commitments, owners, deadlines" },
   supply: { domain: "supply", title: "Supply Agent", role: "Stockout risk and supplier comparison" },
   execution: { domain: "execution", title: "Execution Agent", role: "Missing owners and recovery work" },
+  security: { domain: "security", title: "Security Agent", role: "Vulnerabilities, compliance, security incidents" },
+  finance: { domain: "finance", title: "Finance Agent", role: "Transaction risk, payment reconciliation, revenue impact" },
+  manufacturing: { domain: "manufacturing", title: "Manufacturing Agent", role: "Production lines, equipment telemetry, output yield" },
 };
 
 function RunCard({ run, index }: { run: AgentRun; index: number }) {
-  const meta = AGENTS[run.agent];
-  const color = DOMAIN[meta.domain].color;
+  const meta = AGENTS[run.agent] || {
+    domain: "infrastructure" as Domain,
+    title: `${run.agent.charAt(0).toUpperCase() + run.agent.slice(1)} Agent`,
+    role: "Operational domain analysis",
+  };
+  const domainInfo = DOMAIN[meta.domain] || DOMAIN.infrastructure;
+  const color = domainInfo.color;
   return (
     <li className="rise relative pl-9" style={{ animationDelay: `${index * 0.06}s` }}>
       {/* The run reads as a line with a station for each agent. */}
@@ -106,7 +114,7 @@ export default function AgentWorkspace() {
             </section>
             <section className="card flex flex-wrap gap-x-3 gap-y-1 p-4">
               {Object.values(AGENTS).map((a) => (
-                <span key={a.title} className="flex items-center gap-1.5 text-xs"><Station domain={a.domain} size={9} /> {DOMAIN[a.domain].label}</span>
+                <span key={a.title} className="flex items-center gap-1.5 text-xs"><Station domain={a.domain} size={9} /> {DOMAIN[a.domain]?.label || a.title}</span>
               ))}
             </section>
             {!running && incident.data && (

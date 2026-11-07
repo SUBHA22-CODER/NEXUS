@@ -308,12 +308,20 @@ def overview(project_id: uuid.UUID, user: User = Depends(current_user), db: Sess
 # ---- Investigations -------------------------------------------------------------------------------
 
 @router.post("/projects/{project_id}/investigations", status_code=202)
-def start_investigation(project_id: uuid.UUID, background: BackgroundTasks, request: Request, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
+def start_investigation(project_id: uuid.UUID, background: BackgroundTasks, request: Request, force: bool = False, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
     _owned(db, Project, project_id, user)
     if not db.scalar(select(func.count()).select_from(OperationalEvent).where(OperationalEvent.project_id == project_id)):
         raise HTTPException(422, "Upload some data before starting an investigation")
-    if db.scalar(select(Incident.id).where(Incident.project_id == project_id, Incident.status == "running")):
-        raise HTTPException(status.HTTP_409_CONFLICT, "An investigation is already running in this project")
+    running = db.scalars(select(Incident).where(Incident.project_id == project_id, Incident.status == "running")).all()
+    if running:
+        if force:
+            for inc in running:
+                inc.status = "failed"
+                inc.title = "Investigation cancelled"
+                inc.error = "A new investigation was triggered by the user."
+            db.flush()
+        else:
+            raise HTTPException(status.HTTP_409_CONFLICT, "An investigation is already running in this project")
     incident = Incident(tenant_id=user.tenant_id, project_id=project_id, created_by=user.id)
     db.add(incident)
     db.flush()
@@ -321,6 +329,20 @@ def start_investigation(project_id: uuid.UUID, background: BackgroundTasks, requ
     db.commit()
     background.add_task(run_investigation, incident.id)
     return _incident_out(incident)
+
+
+@router.post("/projects/{project_id}/investigations/cancel")
+def cancel_running_investigations(project_id: uuid.UUID, user: User = Depends(require_role("analyst")), db: Session = Depends(get_db)):
+    _owned(db, Project, project_id, user)
+    running = db.scalars(select(Incident).where(Incident.project_id == project_id, Incident.status == "running")).all()
+    cancelled = len(running)
+    for inc in running:
+        inc.status = "failed"
+        inc.title = "Investigation cancelled"
+        inc.error = "Cancelled by user"
+        audit.record(db, user.tenant_id, user.email, "investigation.cancelled", "incident", inc.id, {})
+    db.commit()
+    return {"cancelled": cancelled}
 
 
 @router.get("/incidents/{incident_id}")

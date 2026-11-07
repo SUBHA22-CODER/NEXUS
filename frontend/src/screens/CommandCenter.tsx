@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useProject, useSession } from "../App";
 import { post, type Assessment, type Incident, type Risk } from "../api";
-import { Button, Chip, DOMAIN, DOMAINS, Empty, ErrorNote, LinkButton, Loading, Method, PageHead, Station, fmtDate, fmtMoney } from "../ui";
+import { Button, Chip, DOMAIN, DOMAINS, Empty, LinkButton, Loading, Method, PageHead, Station, fmtDate, fmtMoney } from "../ui";
 
 /** One row of the coverage comparison: how long stock lasts against when replenishment arrives. */
 function CoverRow({ label, note, risk, scale }: { label: string; note: string; risk: Risk; scale: number }) {
@@ -98,11 +98,12 @@ export default function CommandCenter() {
   const base = `/p/${project.id}`;
   const canRun = me.user.role !== "viewer";
 
-  async function investigate() {
+  async function investigate(force = false) {
     setBusy(true);
     setError("");
     try {
-      const incident = await post<Incident>(`/projects/${project.id}/investigations`);
+      const url = `/projects/${project.id}/investigations${force ? "?force=true" : ""}`;
+      const incident = await post<Incident>(url);
       refreshOverview();
       navigate(`${base}/i/${incident.id}/agents`);
     } catch (e) {
@@ -121,18 +122,48 @@ export default function CommandCenter() {
     <>
       <PageHead eyebrow={project.name} title="Command Center">
         {canRun && eventTotal > 0 && (
-          <Button variant={overview.latest ? "secondary" : "primary"} onClick={investigate} disabled={busy || !!running}>
-            {running ? "Investigation running" : overview.latest ? "Run a new investigation" : "Start investigation"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant={overview.latest ? "secondary" : "primary"} onClick={() => investigate(false)} disabled={busy || !!running}>
+              {busy ? "Starting..." : running ? "Investigation in progress" : overview.latest ? "Run a new investigation" : "Start investigation"}
+            </Button>
+            {running && (
+              <Button variant="ghost" onClick={() => investigate(true)} disabled={busy} title="Cancel stuck run and restart">
+                Force restart
+              </Button>
+            )}
+          </div>
         )}
       </PageHead>
       <div className="space-y-6">
-        <ErrorNote message={error} />
-        {failed && <ErrorNote message={`The last investigation failed: ${failed.error || "unknown error"}`} />}
+        {error && (
+          <div className="card border-infra/40 bg-infra/5 p-4 text-sm text-infra flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            {error.toLowerCase().includes("running") && (
+              <Button variant="secondary" onClick={() => investigate(true)} disabled={busy} className="text-xs">
+                Force restart investigation
+              </Button>
+            )}
+          </div>
+        )}
+        {failed && (
+          <div className="card border-infra/30 p-4 text-sm flex flex-wrap items-center justify-between gap-3">
+            <span>The last investigation encountered an issue: {failed.error || failed.title || "unknown error"}</span>
+            {canRun && (
+              <Button variant="secondary" onClick={() => investigate(true)} disabled={busy} className="text-xs">
+                Retry investigation
+              </Button>
+            )}
+          </div>
+        )}
         {running && (
-          <Link to={`${base}/i/${running.id}/agents`} className="card flex items-center gap-3 p-4 font-semibold hover:border-ink">
-            <span className="pulse-dot size-2.5 rounded-full bg-exec" /> Investigation in progress. Watch the agents →
-          </Link>
+          <div className="card flex flex-wrap items-center justify-between gap-3 p-4 font-semibold hover:border-ink">
+            <Link to={`${base}/i/${running.id}/agents`} className="flex items-center gap-3">
+              <span className="pulse-dot size-2.5 rounded-full bg-exec" /> Investigation in progress. Watch the agents →
+            </Link>
+            <Button variant="ghost" onClick={() => investigate(true)} disabled={busy} className="text-xs text-muted hover:text-ink">
+              Restart if stuck
+            </Button>
+          </div>
         )}
         {eventTotal === 0 && (
           <Empty title="Nothing to investigate yet">
@@ -142,7 +173,14 @@ export default function CommandCenter() {
         )}
         {eventTotal > 0 && !overview.latest && !running && (
           <Empty title={`${eventTotal} events ready`}>
-            <p className="text-muted">Start an investigation to connect them.</p>
+            <p className="text-muted">Start an autonomous investigation to correlate cross-domain telemetry and calculate operational risk.</p>
+            {canRun && (
+              <div className="mt-4">
+                <Button variant="primary" onClick={() => investigate(false)} disabled={busy}>
+                  {busy ? "Starting..." : "Start investigation"}
+                </Button>
+              </div>
+            )}
           </Empty>
         )}
         {overview.latest && <Headline incident={overview.latest} pending={overview.pending_approvals} base={base} />}
@@ -151,7 +189,7 @@ export default function CommandCenter() {
 
         {eventTotal > 0 && (
           <section className="rise grid grid-cols-2 gap-px overflow-hidden rounded-md border border-rule bg-rule lg:grid-cols-6" style={{ animationDelay: ".16s" }} aria-label="Project totals">
-            {DOMAINS.map((d) => (
+            {DOMAINS.filter((d) => (overview.event_counts[d] ?? 0) > 0 || ["infrastructure", "supply", "communication", "execution"].includes(d)).map((d) => (
               <div key={d} className="bg-card p-4">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-muted"><Station domain={d} size={10} /> {DOMAIN[d].label}</p>
                 <p className="mt-1 font-mono text-2xl font-semibold">{overview.event_counts[d] ?? 0}</p>

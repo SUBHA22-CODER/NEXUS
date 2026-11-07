@@ -25,7 +25,7 @@ export default function EvidenceViewer() {
             className={`flex cursor-pointer items-center gap-1.5 rounded border px-2.5 py-1 text-sm font-medium ${domain === d ? "border-ink bg-ink text-paper" : "border-rule bg-card"}`}
           >
             {d !== "all" && <Station domain={d} size={9} />}
-            {d === "all" ? "All" : DOMAIN[d].label}
+            {d === "all" ? "All" : (DOMAIN[d]?.label || d)}
           </button>
         ))}
         {ids.length > 0 && <Button variant="ghost" onClick={() => setParams({})}>Showing {ids.length} linked, show all</Button>}

@@ -1,4 +1,12 @@
-export type Domain = "infrastructure" | "supply" | "communication" | "execution";
+export type Domain =
+  | "infrastructure"
+  | "supply"
+  | "communication"
+  | "execution"
+  | "security"
+  | "finance"
+  | "manufacturing"
+  | "tabular";
 export type Role = "admin" | "approver" | "analyst" | "viewer";
 
 export interface User { id: string; name: string; email: string; role: Role }

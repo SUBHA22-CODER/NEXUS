@@ -80,3 +80,4 @@ Prior to this fix, users experienced file picker filtering issues, immediate rej
    - `DELETE /api/projects/{id}/files/{file_id}` to cleanly remove files and cascade delete corresponding events.
 5. **Quality Verification:**
    - Comprehensive unit and integration test suite covering new formats, oversized file rejection, and file deletion.
+

@@ -7,6 +7,10 @@ export const DOMAIN: Record<Domain, { label: string; color: string; text: string
   supply: { label: "Supply", color: "var(--color-supply)", text: "text-supply", bg: "bg-supply" },
   communication: { label: "Communication", color: "var(--color-comms)", text: "text-comms", bg: "bg-comms" },
   execution: { label: "Execution", color: "var(--color-exec)", text: "text-exec", bg: "bg-exec" },
+  security: { label: "Security", color: "var(--color-security)", text: "text-red-700", bg: "bg-red-700" },
+  finance: { label: "Finance", color: "var(--color-finance)", text: "text-emerald-700", bg: "bg-emerald-700" },
+  manufacturing: { label: "Manufacturing", color: "var(--color-mfg)", text: "text-indigo-600", bg: "bg-indigo-600" },
+  tabular: { label: "Tabular", color: "var(--color-tabular)", text: "text-slate-600", bg: "bg-slate-600" },
 };
 export const DOMAINS = Object.keys(DOMAIN) as Domain[];
 
@@ -132,8 +136,9 @@ export function Chip({ value, label }: { value: string; label?: string }) {
 
 /** A station marker: the ring used for a domain everywhere, from the legend to the graph. */
 export function Station({ domain, size = 12 }: { domain: Domain; size?: number }) {
+  const meta = DOMAIN[domain] || DOMAIN.infrastructure;
   return (
-    <span aria-hidden className="inline-block shrink-0 rounded-full bg-card" style={{ width: size, height: size, border: `${Math.max(2, size / 4)}px solid ${DOMAIN[domain].color}` }} />
+    <span aria-hidden className="inline-block shrink-0 rounded-full bg-card" style={{ width: size, height: size, border: `${Math.max(2, size / 4)}px solid ${meta.color}` }} />
   );
 }
 
