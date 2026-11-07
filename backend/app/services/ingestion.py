@@ -75,6 +75,8 @@ def ingest_bytes(db: Session, user: User, project_id: uuid.UUID, filename: str, 
             )
         )
         added += 1
+        if added % 2000 == 0:
+            db.flush()
 
     deps_added = 0
     known = {(d.source, d.target) for d in db.scalars(select(Dependency).where(Dependency.project_id == project_id))}

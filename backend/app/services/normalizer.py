@@ -286,7 +286,10 @@ def _manufacturing_row(row: dict, filename: str, locator: str, raw: str, now: da
 
 def _generic_tabular_row(row: dict, filename: str, locator: str, raw: str, now: datetime) -> NormalizedEvent:
     occurred = now
-    for col in ("timestamp", "time", "date", "occurred_at", "datetime", "ts", "as_of", "created_at"):
+    for col in (
+        "timestamp_utc", "timestamp", "time", "date", "occurred_at", "datetime", "ts",
+        "as_of", "created_at", "utc_timestamp", "event_time", "event_timestamp", "logged_at"
+    ):
         val = (row.get(col) or "").strip()
         if val:
             try:
@@ -296,14 +299,18 @@ def _generic_tabular_row(row: dict, filename: str, locator: str, raw: str, now: 
                 pass
 
     entity = ""
-    for col in ("service", "entity", "component", "machine", "gateway", "system", "sku", "host", "server", "app", "name", "source_ip", "user"):
+    for col in (
+        "entity_id", "service", "entity", "component", "machine", "gateway", "system",
+        "sku", "host", "server", "app", "name", "source_ip", "user", "device", "asset",
+        "service_name", "host_name", "target", "node"
+    ):
         val = (row.get(col) or "").strip()
         if val:
             entity = val
             break
     if not entity:
-        for v in row.values():
-            if v and str(v).strip():
+        for k, v in row.items():
+            if v and str(v).strip() and not any(k.startswith(p) for p in ("metric", "quantity", "amount", "event_id", "id")):
                 entity = str(v).strip()[:50]
                 break
     entity = (entity or "record")[:200]
@@ -323,26 +330,43 @@ def _generic_tabular_row(row: dict, filename: str, locator: str, raw: str, now: 
     else:
         severity = "info"
 
+    # Domain determination
     domain = (row.get("domain") or "").strip().lower()
+    env_val = (row.get("environment") or "").strip().lower()
     if domain not in ("infrastructure", "supply", "communication", "execution", "security", "finance", "manufacturing"):
-        headers_set = {k.lower() for k in row.keys()}
-        if any(k in headers_set for k in ("sku", "inventory", "supplier", "lead_time_days", "stock", "on_hand", "daily_demand")):
-            domain = "supply"
-        elif any(k in headers_set for k in ("task", "ticket", "owner", "assignee", "deadline")):
-            domain = "execution"
-        elif any(k in headers_set for k in ("speaker", "utterance", "transcript", "meeting", "notes")):
-            domain = "communication"
-        elif any(k in headers_set for k in ("gateway", "transaction", "amount", "currency")):
-            domain = "finance"
-        elif any(k in headers_set for k in ("machine", "downtime", "production")):
-            domain = "manufacturing"
-        elif any(k in headers_set for k in ("cve", "source_ip", "login", "auth")):
-            domain = "security"
-        else:
+        if any(k in env_val for k in ("infra", "it_op", "it-op", "ops", "cloud", "tech")):
             domain = "infrastructure"
+        elif any(k in env_val for k in ("supply", "logistics", "procure", "inventor")):
+            domain = "supply"
+        elif any(k in env_val for k in ("sec", "cyber", "vuln", "auth")):
+            domain = "security"
+        elif any(k in env_val for k in ("comm", "meeting", "transcript", "chat")):
+            domain = "communication"
+        elif any(k in env_val for k in ("fin", "payment", "transact")):
+            domain = "finance"
+        elif any(k in env_val for k in ("mfg", "manuf", "plant", "factory", "prod")):
+            domain = "manufacturing"
+        elif any(k in env_val for k in ("exec", "task")):
+            domain = "execution"
+        else:
+            headers_set = {k.lower() for k in row.keys()}
+            if any(k in headers_set for k in ("sku", "inventory", "supplier", "lead_time_days", "stock", "on_hand", "daily_demand", "stock_units", "daily_demand_units")):
+                domain = "supply"
+            elif any(k in headers_set for k in ("task", "ticket", "owner", "assignee", "deadline")):
+                domain = "execution"
+            elif any(k in headers_set for k in ("speaker", "utterance", "transcript", "meeting", "notes")):
+                domain = "communication"
+            elif any(k in headers_set for k in ("gateway", "transaction", "amount", "currency", "amount_inr")):
+                domain = "finance"
+            elif any(k in headers_set for k in ("machine", "downtime", "production")):
+                domain = "manufacturing"
+            elif any(k in headers_set for k in ("cve", "source_ip", "login", "auth", "vulnerability")):
+                domain = "security"
+            else:
+                domain = "infrastructure"
 
     summary = ""
-    for col in ("summary", "message", "description", "title", "msg", "text", "detail", "reason"):
+    for col in ("summary", "message", "description", "title", "msg", "text", "detail", "reason", "evidence_note", "recommended_first_check"):
         val = (row.get(col) or "").strip()
         if val:
             summary = val
@@ -356,6 +380,18 @@ def _generic_tabular_row(row: dict, filename: str, locator: str, raw: str, now: 
     if not event_type:
         event_type = "record" if severity == "info" else f"{severity}_event"
 
+    attrs = {k: str(v).strip() for k, v in row.items() if v is not None}
+    if "stock_units" in row and "on_hand" not in attrs:
+        try:
+            attrs["on_hand"] = float(row["stock_units"])
+        except (ValueError, TypeError):
+            pass
+    if "daily_demand_units" in row and "daily_demand" not in attrs:
+        try:
+            attrs["daily_demand"] = float(row["daily_demand_units"])
+        except (ValueError, TypeError):
+            pass
+
     return NormalizedEvent(
         domain=domain,
         event_type=event_type,
@@ -363,7 +399,7 @@ def _generic_tabular_row(row: dict, filename: str, locator: str, raw: str, now: 
         occurred_at=occurred.isoformat(),
         entity=entity,
         summary=summary,
-        attributes={k: str(v).strip() for k, v in row.items() if v is not None},
+        attributes=attrs,
         source_file=filename,
         source_locator=locator,
         raw=raw[:2000],
@@ -405,9 +441,26 @@ def normalize_csv(filename: str, text: str, now: datetime, delimiter: str | None
             matched_kind = kind
             matched_builder = builder
             break
-    else:
-        expected = "; ".join(", ".join(sorted(r)) for _, r, _ in _CSV_SCHEMAS)
-        raise UnsupportedFile(f"Unrecognised CSV columns. Expected one of: {expected}")
+
+    # If not a specialized schema, check if headers contain operational signals
+    if matched_kind is None:
+        operational_signals = {
+            "timestamp", "timestamp_utc", "time", "date", "datetime", "occurred_at", "ts", "as_of",
+            "created_at", "utc_timestamp", "event_time", "event_timestamp", "logged_at",
+            "entity_id", "service", "entity", "component", "machine", "gateway", "system", "sku",
+            "host", "server", "app", "device", "asset", "node", "resource", "service_name", "host_name",
+            "severity", "level", "status", "priority", "state", "environment",
+            "metric", "metric_name", "metric_value", "event_type", "stock_units", "daily_demand_units",
+            "quantity", "amount", "amount_inr", "delay_hours", "source_ip", "source_system",
+            "message", "msg", "summary", "description", "detail", "title", "reason", "evidence_note",
+            "recommended_first_check", "location", "is_synthetic",
+        }
+        if headers & operational_signals:
+            matched_kind = "tabular"
+            matched_builder = _generic_tabular_row
+        else:
+            expected = "; ".join(", ".join(sorted(r)) for _, r, _ in _CSV_SCHEMAS)
+            raise UnsupportedFile(f"Unrecognised CSV columns. Expected one of: {expected}")
     
     kind = matched_kind
     result = NormalizeResult(kind)

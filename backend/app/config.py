@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     jwt_ttl_minutes: int = 480
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    max_upload_size_mb: int = Field(default=25, validation_alias="MAX_UPLOAD_SIZE_MB")
-    max_upload_bytes: int = 25 * 1024 * 1024
-    max_lines_per_file: int = 100_000
+    max_upload_size_mb: int = Field(default=50, validation_alias="MAX_UPLOAD_SIZE_MB")
+    max_upload_bytes: int = 50 * 1024 * 1024
+    max_lines_per_file: int = Field(default=250_000, validation_alias="MAX_LINES_PER_FILE")
     # Purchase orders above this value need an admin rather than an approver.
     po_admin_threshold: float = 5000.0
 

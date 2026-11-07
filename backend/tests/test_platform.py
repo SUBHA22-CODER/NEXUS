@@ -482,3 +482,25 @@ def test_investigation_force_and_cancellation(client):
     res4 = client.post(f"/api/projects/{pid}/investigations/cancel", headers=admin)
     assert res4.status_code == 200
     assert res4.json()["cancelled"] >= 1
+
+
+def test_enterprise_demo_csv_normalization(client):
+    admin = register(client)
+    pid = project(client, admin)
+    sample_content = (
+        b"event_id,timestamp_utc,environment,event_type,severity,status,entity_id,location,metric_name,metric_value,quantity,amount_inr,delay_hours,stock_units,daily_demand_units,recommended_first_check,evidence_note,source_system,is_synthetic\n"
+        b"NX-001,2026-11-03T17:58:00Z,IT_OPERATIONS,API_LATENCY,LOW,INVESTIGATING,order-service,Delhi,latency_ms,67.63,457,,,,,Investigate the alert,Synthetic telemetry,simulator,True\n"
+        b"NX-002,2026-10-02T10:42:00Z,SUPPLY_CHAIN,DEMAND_SPIKE,HIGH,INVESTIGATING,supplier-northstar,Chennai,output_units,2.75,102,,,1466,167,Check downstream,Potential delay,simulator,True\n"
+    )
+    res = client.post(f"/api/projects/{pid}/uploads", headers=admin, files=[("files", ("nexus_enterprise_demo_20mb.csv", sample_content))])
+    assert res.status_code == 200
+    result = res.json()["results"][0]
+    assert result["events_added"] == 2
+    assert "error" not in result
+
+    # Verify events created with correct domains
+    events = client.get(f"/api/projects/{pid}/events", headers=admin).json()
+    assert len(events) == 2
+    domains = {e["domain"] for e in events}
+    assert "infrastructure" in domains
+    assert "supply" in domains
